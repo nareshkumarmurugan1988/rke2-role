@@ -1,3 +1,5 @@
+# BEGIN ANSIBLE MANAGED BLOCK
+
 server: {{ rke2_config.server }}
 
 token: {{ rke2_config.token }}
@@ -8,3 +10,5 @@ tls-san:
   - {{ ip }}
 {% endfor %}
 {% endif %}
+
+# END ANSIBLE MANAGED BLOCK

@@ -1,0 +1,10 @@
+server: {{ rke2_config.server }}
+
+token: {{ rke2_config.token }}
+
+{% if rke2_config.get('tls-san') %}
+tls-san:
+{% for ip in rke2_config['tls-san'] %}
+  - {{ ip }}
+{% endfor %}
+{% endif %}

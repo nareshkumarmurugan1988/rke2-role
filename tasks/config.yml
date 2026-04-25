@@ -1,23 +1,70 @@
 ---
 
+# # combine cluster and group vars to form temp rke2_config
+# - name: Combine cluster and group config vars
+#   ansible.builtin.set_fact:
+#     temp_group_rke2_config: "{{ cluster_rke2_config | default({}) | ansible.builtin.combine((group_rke2_config | default({})), list_merge='prepend_rp') }}"
+#   tags: ["configure"]
+
+# # combine prevrious with host vars to form final rke2_config
+# - name: Combine previous config and host config vars
+#   ansible.builtin.set_fact:
+#     rke2_config: "{{ temp_group_rke2_config | default({}) | ansible.builtin.combine((host_rke2_config | default({})), list_merge='prepend_rp') }}"
+#   tags: ["configure"]
+
+# # write final config
+# - name: Write config.yaml
+#   ansible.builtin.blockinfile:
+#     path: /etc/rancher/rke2/config.yaml
+#     block: "{{ rke2_config | to_nice_yaml(indent=0) }}"
+#     create: true
+#     mode: "0600"
+#   notify: Restart {{ service_name }}
+#   tags: ["configure"]
+
 # combine cluster and group vars to form temp rke2_config
 - name: Combine cluster and group config vars
   ansible.builtin.set_fact:
-    temp_group_rke2_config: "{{ cluster_rke2_config | default({}) | ansible.builtin.combine((group_rke2_config | default({})), list_merge='prepend_rp') }}"
+    temp_group_rke2_config: >-
+      {{ cluster_rke2_config | default({}) |
+         combine(group_rke2_config | default({}),
+         list_merge='prepend_rp') }}
   tags: ["configure"]
 
-# combine prevrious with host vars to form final rke2_config
+# combine previous with host vars to form final rke2_config
 - name: Combine previous config and host config vars
   ansible.builtin.set_fact:
-    rke2_config: "{{ temp_group_rke2_config | default({}) | ansible.builtin.combine((host_rke2_config | default({})), list_merge='prepend_rp') }}"
+    rke2_config: >-
+      {{ temp_group_rke2_config | default({}) |
+         combine(host_rke2_config | default({}),
+         list_merge='prepend_rp') }}
   tags: ["configure"]
 
-# write final config
-- name: Write config.yaml
-  ansible.builtin.blockinfile:
-    path: /etc/rancher/rke2/config.yaml
-    block: "{{ rke2_config | to_nice_yaml(indent=0) }}"
-    create: true
+- name: Write RKE2 config.yaml from template
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
     mode: "0600"
   notify: Restart {{ service_name }}
   tags: ["configure"]
+
+- name: Set API endpoint
+  set_fact:
+    rke2_config: >-
+      {{
+        rke2_config |
+        combine({
+          'server': 'https://' + (haproxy_ip if haproxy_enabled else ansible_host) + ':9345'
+        })
+      }}
+
+- name: Add HAProxy to TLS SAN
+  set_fact:
+    rke2_config: >-
+      {{
+        rke2_config |
+        combine({
+          'tls-san': (rke2_config.get('tls-san', []) + [haproxy_ip]) | unique
+        })
+      }}
+  when: haproxy_enabled

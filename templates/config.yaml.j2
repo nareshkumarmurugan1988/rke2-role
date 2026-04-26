@@ -1,14 +1,14 @@
-# BEGIN ANSIBLE MANAGED BLOCK
+# BEGIN ANSIBLE MANAGED BLOCK1
 
 server: {{ rke2_config.server }}
 
 token: {{ rke2_config.token }}
 
-{% if rke2_config.get('tls-san') %}
+{% if rke2_config.tls_san is defined and rke2_config.tls_san | length > 0 %}
 tls-san:
-{% for ip in rke2_config['tls-san'] %}
+{% for ip in rke2_config.tls_san %}
   - {{ ip }}
 {% endfor %}
 {% endif %}
 
-# END ANSIBLE MANAGED BLOCK
+# END ANSIBLE MANAGED BLOCK1

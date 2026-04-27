@@ -16,7 +16,7 @@
 
 # ----------------------------
 # 3. Merge group config
-# ----------------------------aa
+# ----------------------------
 - name: Merge group config
   set_fact:
     rke2_config: "{{ rke2_config | combine(group_rke2_config | default({})) }}"
@@ -62,7 +62,7 @@
 - name: Set API endpoint
   set_fact:
     rke2_config: "{{ rke2_config | combine({
-      'server': 'https://' + (haproxy_ip if haproxy_enabled else ansible_host) + ':9345'
+      'server': 'https://' + (haproxy_ip if haproxy_enabled else ansible_host) + ':6443'
     }) }}"
 
 # ----------------------------

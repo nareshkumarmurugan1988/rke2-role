@@ -1,8 +1,8 @@
 # BEGIN ANSIBLE MANAGED BLOCK
 
-server: {{ rke2_config.server }}
+server: {{ rke2_config.server | default('') }}
 
-token: {{ rke2_config.token }}
+token: {{ rke2_config.token | mandatory }}
 
 {% if rke2_config.tls_san is defined and rke2_config.tls_san | length > 0 %}
 tls-san:

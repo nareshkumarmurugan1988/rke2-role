@@ -1,45 +1,56 @@
 ---
 
-- name: Merge cluster and group config
+# 1. Initialize safe base structure (IMPORTANT)
+- name: Initialize rke2_config base structure
   set_fact:
-    temp_group_rke2_config: >-
-      {{ cluster_rke2_config | default({}) |
-         combine(group_rke2_config | default({})) }}
+    rke2_config:
+      token: ""
+      tls_san: []
 
+# 2. Merge cluster config INTO base
+- name: Merge cluster config
+  set_fact:
+    rke2_config: "{{ rke2_config | combine(cluster_rke2_config | default({})) }}"
+
+# 3. Merge group config
+- name: Merge group config
+  set_fact:
+    rke2_config: "{{ rke2_config | combine(group_rke2_config | default({})) }}"
+
+# 4. Merge host config
 - name: Merge host config
   set_fact:
-    rke2_config: >-
-      {{ temp_group_rke2_config | default({}) |
-         combine(host_rke2_config | default({})) }}
+    rke2_config: "{{ rke2_config | combine(host_rke2_config | default({})) }}"
 
+# 5. Set API endpoint (override always)
 - name: Set API endpoint
   set_fact:
-    rke2_config: >-
-      {{
-        rke2_config |
-        combine({
-          'server': 'https://' + (haproxy_ip if haproxy_enabled else ansible_host) + ':9345'
-        })
-      }}
+    rke2_config: "{{ rke2_config | combine({
+      'server': 'https://' + (haproxy_ip if haproxy_enabled else ansible_host) + ':6443'
+    }) }}"
 
-
+# 6. Add HAProxy to TLS SAN safely
 - name: Add HAProxy to TLS SAN
   set_fact:
-    rke2_config: >-
-      {{
-        rke2_config |
-        combine({
-          'tls_san': (rke2_config.get('tls_san', []) + [haproxy_ip]) | unique
-        })
-      }}
+    rke2_config: "{{ rke2_config | combine({
+      'tls_san': (rke2_config.tls_san | default([]) + [haproxy_ip]) | unique
+    }) }}"
   when: haproxy_enabled
 
+# 7. VALIDATION (prevents your previous crash)
+- name: Validate required fields
+  ansible.builtin.fail:
+    msg: "rke2_config.token is missing from merged configuration!"
+  when: rke2_config.token | default('') == ''
 
+- name: DEBUG rke2_config (full dump)
+  debug:
+    var: rke2_config
+
+# 8. Write RKE2 config.yaml
 - name: Write RKE2 config.yaml
   ansible.builtin.template:
     src: config.yaml.j2
     dest: /etc/rancher/rke2/config.yaml
     mode: "0600"
   notify: Restart {{ service_name }}
-
-##

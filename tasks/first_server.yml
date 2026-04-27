@@ -2,7 +2,7 @@
 
 - name: Include task file config.yml
   ansible.builtin.include_tasks: config.yml
-
+  
 - name: Flush_handlers
   ansible.builtin.meta: flush_handlers
 

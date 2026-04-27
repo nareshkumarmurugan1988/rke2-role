@@ -1,0 +1,12 @@
+---
+- name: Bootstrap config
+  template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+  when: inventory_hostname == groups['rke2_servers'][0]
+  notify: Restart {{ service_name }}
+
+  
+
+
+

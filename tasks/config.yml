@@ -1,35 +1,73 @@
 ---
 
-# 1. Initialize safe base structure (IMPORTANT)
-- name: Initialize rke2_config base structure
+# ----------------------------
+# 1. Start with empty base
+# ----------------------------
+- name: Initialize rke2_config
   set_fact:
-    rke2_config:
-      token: ""
-      tls_san: []
+    rke2_config: {}
 
-# 2. Merge cluster config INTO base
+# ----------------------------
+# 2. Merge cluster config
+# ----------------------------
 - name: Merge cluster config
   set_fact:
     rke2_config: "{{ rke2_config | combine(cluster_rke2_config | default({})) }}"
 
+# ----------------------------
 # 3. Merge group config
+# ----------------------------
 - name: Merge group config
   set_fact:
     rke2_config: "{{ rke2_config | combine(group_rke2_config | default({})) }}"
 
+# ----------------------------
 # 4. Merge host config
+# ----------------------------
 - name: Merge host config
   set_fact:
     rke2_config: "{{ rke2_config | combine(host_rke2_config | default({})) }}"
 
-# 5. Set API endpoint (override always)
+# ----------------------------
+# 5. Inject RKE2 token (REQUIRED)
+# OPTION A: from variable (recommended)
+# ----------------------------
+- name: Set RKE2 token from variable
+  set_fact:
+    rke2_config: "{{ rke2_config | combine({
+      'token': rke2_token
+    }) }}"
+  when: rke2_token is defined
+
+# ----------------------------
+# 5B. OPTIONAL: fallback from master node
+# ----------------------------
+- name: Read token from master (fallback)
+  slurp:
+    src: /var/lib/rancher/rke2/server/node-token
+  register: token_file
+  delegate_to: master1
+  when: rke2_token is not defined
+
+- name: Set token from master
+  set_fact:
+    rke2_config: "{{ rke2_config | combine({
+      'token': token_file.content | b64decode | trim
+    }) }}"
+  when: rke2_token is not defined
+
+# ----------------------------
+# 6. Set API endpoint
+# ----------------------------
 - name: Set API endpoint
   set_fact:
     rke2_config: "{{ rke2_config | combine({
       'server': 'https://' + (haproxy_ip if haproxy_enabled else ansible_host) + ':6443'
     }) }}"
 
-# 6. Add HAProxy to TLS SAN safely
+# ----------------------------
+# 7. Add HAProxy to TLS SAN
+# ----------------------------
 - name: Add HAProxy to TLS SAN
   set_fact:
     rke2_config: "{{ rke2_config | combine({
@@ -37,19 +75,24 @@
     }) }}"
   when: haproxy_enabled
 
-- name: DEBUG rke2_config (full dump)
+# ----------------------------
+# 8. DEBUG (safe)
+# ----------------------------
+- name: DEBUG rke2_config
   debug:
     var: rke2_config
 
-# 7. VALIDATION (prevents your previous crash)
+# ----------------------------
+# 9. VALIDATION (fail fast)
+# ----------------------------
 - name: Validate required fields
   ansible.builtin.fail:
-    msg: "rke2_config.token is missing from merged configuration!"
-  when: rke2_config.token | default('') == ''
+    msg: "RKE2 token is missing or empty!"
+  when: rke2_config.token | default('') | length == 0
 
-
-
-# 8. Write RKE2 config.yaml
+# ----------------------------
+# 10. Write config file
+# ----------------------------
 - name: Write RKE2 config.yaml
   ansible.builtin.template:
     src: config.yaml.j2

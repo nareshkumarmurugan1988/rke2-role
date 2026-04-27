@@ -1,6 +1,6 @@
 # BEGIN ANSIBLE MANAGED BLOCK
 
-server: https://{{ rke2_config.server }}
+server: https://{{ rke2_config.server | default(ansible_host) }}:9345
 
 {% if rke2_config.token is defined and rke2_config.token | length > 0 %}
 token: {{ rke2_config.token }}

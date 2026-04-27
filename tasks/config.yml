@@ -1,5 +1,37 @@
 ---
 
+
+- name: Check if node-token file exists
+  stat:
+    path: /var/lib/rancher/rke2/server/node-token
+  register: token_file
+
+- name: Read token file
+  slurp:
+    src: /var/lib/rancher/rke2/server/node-token
+  register: token_content
+  when: token_file.stat.exists
+  ignore_errors: true
+
+- name: Check if token is empty
+  set_fact:
+    token_empty: >-
+      {{
+        (not token_file.stat.exists)
+        or
+        (token_content.content is not defined)
+        or
+        (token_content.content | b64decode | trim == '')
+      }}
+
+- name: Restart RKE2 first master if token missing/empty
+  systemd:
+    name: rke2-server
+    state: restarted
+  when:
+    - inventory_hostname == groups['rke2_servers'][0]
+    - token_empty
+
 # ----------------------------
 # 1. Start with empty base
 # ----------------------------

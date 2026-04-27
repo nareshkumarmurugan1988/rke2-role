@@ -1,133 +1,23 @@
 ---
-- name: Check if node-token file exists
-  stat:
-    path: /var/lib/rancher/rke2/server/node-token
-  register: token_file
 
-- name: Read token file
-  slurp:
-    src: /var/lib/rancher/rke2/server/node-token
-  register: token_content
-  when: token_file.stat.exists
-  ignore_errors: true
+# combine cluster and group vars to form temp rke2_config
+- name: Combine cluster and group config vars
+  ansible.builtin.set_fact:
+    temp_group_rke2_config: "{{ cluster_rke2_config | default({}) | ansible.builtin.combine((group_rke2_config | default({})), list_merge='prepend_rp') }}"
+  tags: ["configure"]
 
-- name: Check if token is empty
-  set_fact:
-    token_empty: >-
-      {{
-        (not token_file.stat.exists)
-        or
-        (token_content.content is not defined)
-        or
-        (token_content.content | b64decode | trim == '')
-      }}
+# combine prevrious with host vars to form final rke2_config
+- name: Combine previous config and host config vars
+  ansible.builtin.set_fact:
+    rke2_config: "{{ temp_group_rke2_config | default({}) | ansible.builtin.combine((host_rke2_config | default({})), list_merge='prepend_rp') }}"
+  tags: ["configure"]
 
-- name: Restart RKE2 first master if token missing/empty
-  systemd:
-    name: rke2-server
-    state: restarted
-  when:
-    - inventory_hostname == groups['rke2_servers'][0]
-    - token_empty
-
-# ----------------------------
-# 1. Start with empty base
-# ----------------------------
-- name: Initialize rke2_config
-  set_fact:
-    rke2_config: {}
-
-# ----------------------------
-# 2. Merge cluster config
-# ----------------------------
-- name: Merge cluster config
-  set_fact:
-    rke2_config: "{{ rke2_config | combine(cluster_rke2_config | default({})) }}"
-
-# ----------------------------
-# 3. Merge group config
-# ----------------------------aa
-- name: Merge group config
-  set_fact:
-    rke2_config: "{{ rke2_config | combine(group_rke2_config | default({})) }}"
-
-# ----------------------------
-# 4. Merge host config
-# ----------------------------
-- name: Merge host config
-  set_fact:
-    rke2_config: "{{ rke2_config | combine(host_rke2_config | default({})) }}"
-
-# ----------------------------
-# 5. Inject RKE2 token (REQUIRED)
-# OPTION A: from variable (recommended)
-# ----------------------------
-- name: Set RKE2 token from variable
-  set_fact:
-    rke2_config: "{{ rke2_config | combine({
-      'token': rke2_token
-    }) }}"
-  when: rke2_token is defined
-
-# ----------------------------
-# 5B. OPTIONAL: fallback from master node
-# ----------------------------
-- name: Read token from master (fallback)
-  slurp:
-    src: /var/lib/rancher/rke2/server/node-token
-  register: token_file
-  delegate_to: master1
-  when: rke2_token is not defined
-
-- name: Set token from master
-  set_fact:
-    rke2_config: "{{ rke2_config | combine({
-      'token': token_file.content | b64decode | trim
-    }) }}"
-  when: rke2_token is not defined
-
-# ----------------------------
-# 6. Set API endpoint
-# ----------------------------
-- name: Set API endpoint
-  set_fact:
-    rke2_config: "{{ rke2_config | combine({
-      'server': 'https://' + (haproxy_ip if haproxy_enabled else ansible_host) + ':9345'
-    }) }}"
-
-# ----------------------------
-# 7. Add HAProxy to TLS SAN
-# ----------------------------
-- name: Add HAProxy to TLS SAN
-  set_fact:
-    rke2_config: "{{ rke2_config | combine({
-      'tls_san': (rke2_config.tls_san | default([]) + [haproxy_ip]) | unique
-    }) }}"
-  when: haproxy_enabled
-
-# ----------------------------
-# 8. DEBUG (safe)
-# ----------------------------
-- name: DEBUG rke2_config
-  debug:
-    var: rke2_config
-
-# ----------------------------
-# 9. VALIDATION (fail fast)
-# ----------------------------
-- name: Validate required fields
-  ansible.builtin.fail:
-    msg: "RKE2 token is missing or empty!"
-  when: rke2_config.token | default('') | length == 0
-
-# ----------------------------
-# 10. Write config file
-# ----------------------------
-- name: Write RKE2 config.yaml
-  ansible.builtin.template:
-    src: config.yaml.j2
-    dest: /etc/rancher/rke2/config.yaml
+# write final config
+- name: Write config.yaml
+  ansible.builtin.blockinfile:
+    path: /etc/rancher/rke2/config.yaml
+    block: "{{ rke2_config | to_nice_yaml(indent=0) }}"
+    create: true
     mode: "0600"
   notify: Restart {{ service_name }}
-
-
+  tags: ["configure"]

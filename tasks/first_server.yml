@@ -12,6 +12,12 @@
     enabled: true
     name: "{{ service_name }}"
 
+- name: Wait for node-token
+  wait_for:
+    path: /var/lib/rancher/rke2/server/node-token
+    state: present
+    timeout: 600
+
 - name: Check_node_ready
   any_errors_fatal: true
   block:

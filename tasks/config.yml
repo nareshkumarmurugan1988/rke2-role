@@ -37,15 +37,17 @@
     }) }}"
   when: haproxy_enabled
 
+- name: DEBUG rke2_config (full dump)
+  debug:
+    var: rke2_config
+
 # 7. VALIDATION (prevents your previous crash)
 - name: Validate required fields
   ansible.builtin.fail:
     msg: "rke2_config.token is missing from merged configuration!"
   when: rke2_config.token | default('') == ''
 
-- name: DEBUG rke2_config (full dump)
-  debug:
-    var: rke2_config
+
 
 # 8. Write RKE2 config.yaml
 - name: Write RKE2 config.yaml
